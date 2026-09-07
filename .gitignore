@@ -10,3 +10,6 @@ Resources/AppIcon.icns
 
 # Audit test file left from session work
 diskrobo-audit-test.txt
+
+# ZCode tool bookkeeping (not part of the project)
+.video_agent/

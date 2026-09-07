@@ -1,83 +1,110 @@
 # Disk Robo
 
-**An Agentic Storage Operating System for macOS.**
+A native macOS agentic storage operating system — an interactive sunburst map of everything on your disk, a safe cleanup pipeline that explains every recommendation, and an on-device assistant that answers "where did my space go?"
 
-Disk Robo doesn't just show what uses disk space — it explains *why* storage is consumed, proves *whether* it is safe to remove, remembers *how* it changed over time, and safely executes approved cleanup. All local. All metadata. Zero network.
+macOS 14+ · Swift 5.9 · SwiftUI · zero networking · all analysis on-device
 
-> "Downloads is using 24 GB. ~13.6 GB appears recoverable. Most growth came from DMG installers and ZIP archives during the last 30 days…"
+---
 
-## What's implemented
+## Install
 
-### Phase 2 — intelligence layer (✅ built)
+### Option A — Download a pre-built release
 
-| Capability | Where |
-|---|---|
-| **Robo Radar** — ranked anomalies (severity × recoverable × confidence × recurrence × risk) | `RoboCore/RadarEngines.swift` |
-| **Repeat Offenders** — cleaned-then-regrown locations with weekly growth rates | `RoboCore/RadarEngines.swift` |
-| **Storage Forecast** — OLS projection with honest confidence; refuses to guess with <3 snapshots | `RoboCore/RadarEngines.swift` |
-| **Robo Assistant** — on-device natural language over the engine (no LLM, no network): "why is my disk full?", "can I safely free 20 GB?", "what is Xcode using?" — plans but never deletes | `RoboCore/Assistant.swift`, `Sources/DiskRobo/SmartToolsScreens.swift` |
-| **Menu bar companion** — free space, health, top finding, quick actions | `Sources/DiskRobo/DiskRoboApp.swift` |
-| **System notifications** — threshold alerts only, opt-out in Settings | `Sources/DiskRobo/NotificationManager.swift` |
-| **Robo Uninstall** — per-component app removal review through the safety engine | `RoboCore/AppAnalyzer.swift` (components), Uninstaller screen |
+Go to [**Releases**](https://github.com/begumporshi-alt/disk-robo/releases) and download the latest `DiskRobo.app.zip`. Unzip, drag `DiskRobo.app` into `/Applications`, and open it.
 
-### MVP (Phase 1)
+**First launch — macOS Gatekeeper:**
+Because the app is ad-hoc signed (no Apple Developer ID yet), macOS will show a "cannot be opened because the developer cannot be verified" alert. To dismiss it:
 
-| Capability | Where |
-|---|---|
-| Async, cancellable, memory-bounded disk scanner (progressive results, bounded parallelism, symlink-safe, honest inaccessibility reporting) | `RoboCore/ScanEngine.swift` |
-| Deterministic storage categorization (13 categories) | `RoboCore/ClassificationEngine.swift` |
-| Interactive sunburst storage map with drill-down, hover tooltips, go-up hub | `Sources/DiskRobo/SunburstView.swift` |
-| Largest-file explorer with filters, Quick Look, Reveal, safe trash | `Sources/DiskRobo/FilesScreen.swift` |
-| Rule-driven cleanup candidates — every item explained (what / why / impact / can-return / confidence) | `RoboCore/CleanupEngine.swift` |
-| 4-level safety classification (Green/Yellow/Orange/Red) + hard-protected paths | `RoboCore/SafetyEngine.swift` |
-| Cleanup modes: Quick · Smart · Deep · Target ("find me 30 GB") | `RoboCore/RoboPlanner.swift` |
-| Duplicate detection: size → 64 KB partial hash → full SHA-256 (byte-verified only) | `RoboCore/DuplicateEngine.swift` |
-| Per-app footprints (bundle, support, caches, containers, logs) + leftovers of removed apps | `RoboCore/AppAnalyzer.swift` |
-| Storage Memory: snapshots, cleanup audit log, A/B diff — "where did my space go?" | `RoboCore/HistoryStore.swift`, `RoboCore/GrowthAnalyzer.swift` |
-| Disk Health Score (explained, weighted, never fake-precise) | `RoboCore/HealthScore.swift` |
-| Robo Insights feed | `RoboCore/InsightsEngine.swift` |
-| Safe move-to-Trash pipeline: preview → approval token → TOCTOU re-verification → per-item safety validation → audit log → verified outcome | `RoboCore/TrashExecutor.swift` |
-| Agent tool layer + policy gate (foundation for the Phase-2 natural-language assistant) | `RoboCore/AgentTools.swift` |
-| Permissions onboarding with honest Full Disk Access explanation | `Sources/DiskRobo/OnboardingScreen.swift` |
+1. Right-click (or Control-click) `DiskRobo.app` and choose **Open**
+2. Click **Open** in the confirmation dialog
 
-## Build & run
+macOS will remember this exception and open normally from now on.
+
+**Full Disk Access:**
+Disk Robo needs Full Disk Access to measure system directories. On first launch, a guided onboarding screen will walk you through granting it in **System Settings → Privacy & Security → Full Disk Access**. The app will never function without explicitly granted, user-revocable permission.
+
+### Option B — Build from source
+
+**Prerequisites:**
+- macOS 14 Sonoma or later
+- [Xcode](https://apps.apple.com/us/app/xcode/id497799835) (the Command Line Tools alone won't work — the app uses CoreGraphics for icon generation)
+
+Then run:
 
 ```bash
-swift build            # debug build
-swift test             # 41 engine/safety tests
-./Scripts/build-app.sh # release .app bundle (build/DiskRobo.app)
+git clone https://github.com/begumporshi-alt/disk-robo.git
+cd disk-robo
+./Scripts/build-app.sh release
 open build/DiskRobo.app
 ```
 
-Requirements: macOS 14+, Xcode 15+/Swift 5.9+. For complete coverage of protected user-library locations, grant **Full Disk Access** to Disk Robo after first launch — without it, those folders are reported as inaccessible (never estimated).
+The script builds in release mode, generates the app icon, creates the `.app` bundle, and signs it ad-hoc. Grant Full Disk Access when prompted.
 
-## Safety model (the point of the product)
+---
 
-- **Deletion is always move-to-Trash.** Disk Robo never permanently deletes and never empties the Trash.
-- **SafetyEngine has veto authority** over every destructive operation, from any component. System files, Mail, Messages, Keychains, iCloud Drive, Group Containers, Safari data, and backups are hard-protected — no flow can delete them.
-- **Engine proposals are allowlisted** to known cache/build locations; anything else requires explicit per-item user selection (still veto-checked).
-- **Symlink-escape protection** (resolved-path allowlist checks) and **TOCTOU re-verification** (size + mtime fingerprint re-checked immediately before trashing; mismatch blocks the item).
-- **Approval tokens** are single-use, path-bound, and expire in 5 minutes. No LLM or agent can authorize deletion — only the user's explicit confirmation can.
-- **Every trashed item is journaled** (`cleanup-log.jsonl`) for crash reconciliation and history.
+## What's inside
 
-## Architecture
+| Component | What it does | Module |
+|---|---|---|
+| **Sunburst storage map** | Two-ring interactive chart of your disk by category and subfolder; hover tooltips, click to drill down, center hub goes up a level | `Sources/DiskRobo/SunburstView.swift` |
+| Async, cancellable, memory-bounded disk scanner | Progressive results as files are found, bounded parallelism, symlink-safe, honest inaccessibility reporting | `RoboCore/ScanEngine.swift` |
+| Deterministic storage categorization | 13 rules-based categories — every file classified by path, never guessed | `RoboCore/ClassificationEngine.swift` |
+| Safety-first cleanup pipeline | Every recommendation is explained: what / why / impact / can it return / confidence score; deletion always goes to Trash, never permanent removal | `RoboCore/CleanupEngine.swift` · `RoboCore/RoboPlanner.swift` |
+| Duplicate finder | Partial + full file hashing, size-sorted groups, recommended "keep" per group, wastage estimate | `RoboCore/DuplicateEngine.swift` |
+| App footprints + uninstaller | Per-app storage breakdown (binaries, caches, containers, leftovers) with uninstall-safe paths | `RoboCore/AppAnalyzer.swift` |
+| Health score + radar | 0–100 disk health score with a ranked list of actionable findings | `RoboCore/HealthScore.swift` · `RoboCore/RadarEngines.swift` |
+| Growth tracker | Week-over-week storage growth with chart and top-growing paths | `RoboCore/GrowthAnalyzer.swift` |
+| SQLite warm-start index | Next launch shows your last scan instantly in the dashboard (no re-scan needed) | `RoboCore/StorageIndex.swift` |
+| Live reconcile via FSEvents | Dashboard updates seconds after files change on disk — no scan required | `RoboCore/FSEventsMonitor.swift` · `RoboCore/TreeReconciler.swift` |
+| Child-process scanner | Scanning runs in a separate process so memory returns to the OS when it finishes; in-process fallback if the binary is missing | `RoboCore/ChildProcessScanner.swift` |
+| On-device assistant | Rule-based natural-language interface for exploring your storage; never sends data anywhere | `RoboCore/Assistant.swift` |
+
+---
+
+## Project structure
 
 ```
-DiskRobo (SwiftUI app)  →  AppModel (@MainActor orchestrator)
-                             ↓
-RoboCore (library)  →  RoboOS layer: RoboPlanner · AgentTools · PolicyEngine · Insights · HealthScore
-                        Engines: Scan · Classification · Cleanup · Duplicates · Apps · Growth · History
-                        Safety: SafetyEngine (veto authority) · TrashExecutor (only deletion path)
+disk-robo/
+├── Sources/RoboCore/       # All engines — pure Swift, no UI, no networking
+│   ├── Models.swift        # StorageNode, ScanResult, categories
+│   ├── ScanEngine.swift    # async disk walk, bounded parallelism
+│   ├── StorageIndex.swift  # SQLite warm-start + scan history
+│   ├── ChildProcessScanner.swift
+│   └── … (15 more modules)
+├── Sources/DiskRobo/       # SwiftUI app
+│   ├── AppModel.swift      # single @MainActor orchestrator
+│   ├── DiskRoboApp.swift   # app shell + AppDelegate frame guard
+│   ├── SunburstView.swift  # sunburst + tooltips + breadcrumbs
+│   ├── OverviewScreen.swift
+│   ├── SmartToolsScreens.swift
+│   └── … (10 more screens)
+├── Sources/DiskRoboScanner/ # child-process scanner executable
+├── Tests/RoboCoreTests/    # 97 tests
+├── Scripts/
+│   ├── build-app.sh        # builds the .app bundle
+│   └── generate-icon.swift # programmatic app icon
+├── Resources/AppIcon.icns
+├── docs/                   # 7 product spec documents
+└── .github/workflows/release.yml
 ```
 
-Full documentation lives in [`docs/`](docs/README.md) — 7 files covering the 30 required product documents (vision, UX flows, architecture, safety/privacy threat model, data design, error matrix, phased plan).
+---
 
-## Roadmap
+## Contributing
 
-- **Phase 1.5** — SQLite incremental index + FSEvents-driven rescans
-- **Phase 2** — Robo Radar (anomalies), Repeat Offenders, natural-language Robo Assistant (over the existing typed tool layer), forecasting, automation rules, notifications, menu bar, Robo Uninstall
-- **Phase 3** — Mac Storage Intelligence Platform (multi-Mac, external intelligence, plugins)
+1. Fork the repo and create a feature branch
+2. Make your changes — follow the existing conventions (dark theme, `DashboardCard`, `StatCard`, 4-level risk badges with color+symbol+label)
+3. Ensure `swift test` passes with 97/97 tests green
+4. Open a pull request against `main`
 
-## Non-negotiables honored
+Key invariants you must not break:
+- Deletion is always `FileManager.trashItem` — never permanent removal
+- SafetyEngine has veto power over all deletion; protected trees are never deletable
+- No networking code anywhere in the app
+- No blocking of Swift cooperative threads on filesystem calls
 
-Never silently delete user data · never bypass macOS security · never pretend inaccessible data was scanned · never classify uncertain files as safe · never fabricate recovered-space numbers · never let an AI authorize destructive operations · never hide what cleanup will do · never upload private file information (no networking code exists) · never block the UI during scanning.
+---
+
+## License
+
+This project is private source-available software. Do not redistribute without permission.
